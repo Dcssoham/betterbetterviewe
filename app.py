@@ -1,7 +1,9 @@
+# app.py (modified)
 from flask import Flask, render_template, request, jsonify
 import requests
 from bs4 import BeautifulSoup
 import re
+import json
 import logging
 
 app = Flask(__name__)
@@ -9,6 +11,15 @@ app = Flask(__name__)
 VIDEOS_PER_PAGE = 40
 
 logging.basicConfig(level=logging.DEBUG)
+
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Referer': 'https://www.pornhub.com/',
+    'Viewport-Width': '1920'
+}
 
 
 @app.route('/', methods=['GET'])
@@ -28,8 +39,6 @@ def load_more():
     search_term = data.get('search_term', '')
     filter_type = data.get('filter_type', 'relevance')
     page = int(data.get('page', 1))
-
-    # NEW: already loaded IDs from frontend
     seen_ids = set(data.get('seen_ids', []))
 
     if not search_term:
@@ -37,6 +46,14 @@ def load_more():
 
     results = fetch_videos(search_term, filter_type, page, seen_ids)
     return jsonify({'results': results})
+
+
+@app.route('/video/<video_id>')
+def get_video(video_id):
+    stream_url = fetch_video_stream(video_id)
+    if not stream_url:
+        return jsonify({'error': 'Video stream not found'})
+    return jsonify({'stream_url': stream_url})
 
 
 def fetch_videos(search_term, filter_type, page, seen_ids):
@@ -53,14 +70,8 @@ def fetch_videos(search_term, filter_type, page, seen_ids):
     filter_param = filter_map.get(filter_type, '')
     url = f"{base_url}{search_term}{filter_param}&page={page}"
 
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Viewport-Width': '1920'
-    }
-
     try:
-        r = requests.get(url, headers=headers, timeout=10)
+        r = requests.get(url, headers=HEADERS, timeout=15)
         if r.status_code != 200:
             return []
 
@@ -92,7 +103,6 @@ def parse_videos(html, seen_ids):
 
             video_id = match.group(1)
 
-            # Skip duplicates (frontend + current batch)
             if video_id in seen_ids or video_id in local_seen:
                 continue
 
@@ -100,7 +110,7 @@ def parse_videos(html, seen_ids):
 
             results.append({
                 'video_id': video_id,
-                'video_url': 'https://www.pornhub.com' + link['href'],
+                'video_url': 'https://www.pornhub.com' + link['href'],  # Keep for fallback
                 'title': img.get('alt', 'No title'),
                 'thumbnail': img.get('data-src') or img.get('src', ''),
                 'duration': box.select_one('.duration').get_text(strip=True) if box.select_one('.duration') else '',
@@ -114,5 +124,39 @@ def parse_videos(html, seen_ids):
     return results
 
 
+def fetch_video_stream(video_id):
+    url = f"https://www.pornhub.com/view_video.php?viewkey={video_id}"
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=15)
+        if r.status_code != 200:
+            return None
+
+        # Parse for mediaDefinition JSON
+        html = r.text
+        match = re.search(r'"mediaDefinition"\s*:\s*(\[.*?\])\s*,?', html, re.DOTALL | re.IGNORECASE)
+        if not match:
+            return None
+
+        media_defs = json.loads(match.group(1))
+
+        # Prefer highest quality HLS
+        hls_videos = [d for d in media_defs if d.get('format') == 'hls']
+        if hls_videos:
+            best = max(hls_videos, key=lambda x: x.get('quality', 0))
+            return best.get('videoUrl')
+
+        # Fallback to highest MP4
+        mp4_videos = [d for d in media_defs if d.get('format') == 'mp4']
+        if mp4_videos:
+            best = max(mp4_videos, key=lambda x: x.get('quality', 0))
+            return best.get('videoUrl')
+
+        return None
+
+    except Exception as e:
+        logging.error(f"Stream fetch error for {video_id}: {e}")
+        return None
+
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(debug=True)
