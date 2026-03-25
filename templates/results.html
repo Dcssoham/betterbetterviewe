@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results for "{{ query }}"</title>
+</head>
+<body>
+    <h1>Search Results for "{{ query }}"</h1>
+    <div>
+        {% for video in videos %}
+            <div>
+                {% if video.thumbnail %}
+                    <img src="{{ video.thumbnail }}" alt="Thumbnail">
+                {% else %}
+                    <p>No thumbnail available</p>
+                {% endif %}
+                <iframe width="560" height="315" src="{{ video.url }}/embed" frameborder="0" allowfullscreen></iframe>
+            </div>
+        {% endfor %}
+    </div>
+</body>
+</html>
