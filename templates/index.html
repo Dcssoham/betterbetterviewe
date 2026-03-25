@@ -31,10 +31,6 @@ button {
     cursor: pointer;
 }
 
-button:hover {
-    background: #e67e00;
-}
-
 .results {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -45,11 +41,6 @@ button:hover {
 .video-card {
     background: #1f1f1f;
     cursor: pointer;
-    transition: transform 0.2s;
-}
-
-.video-card:hover {
-    transform: scale(1.03);
 }
 
 .video-card img {
@@ -59,6 +50,20 @@ button:hover {
 .video-info {
     padding: 10px;
     font-size: 14px;
+}
+
+/* PLAYER */
+.player-container {
+    width: 100%;
+    max-width: 900px;
+    margin: 20px auto;
+    display: none;
+}
+
+.player-container iframe {
+    width: 100%;
+    height: 500px;
+    border: none;
 }
 
 .load-more {
@@ -77,6 +82,11 @@ button:hover {
     <button onclick="startSearch()">Search</button>
 </header>
 
+<!-- VIDEO PLAYER -->
+<div id="player" class="player-container">
+    <iframe id="playerFrame" src=""></iframe>
+</div>
+
 <div id="results" class="results"></div>
 <button id="loadMore" class="load-more" onclick="loadMore()">Load More</button>
 
@@ -84,18 +94,13 @@ button:hover {
 let searchTerm = '';
 let filterType = 'relevance';
 let currentPage = 1;
-
-// NEW: track all loaded video IDs
 let loadedVideoIds = new Set();
 
 function startSearch() {
     searchTerm = document.getElementById('searchInput').value;
     currentPage = 1;
-
-    // reset
     loadedVideoIds.clear();
     document.getElementById('results').innerHTML = '';
-
     fetchResults();
 }
 
@@ -112,11 +117,25 @@ function fetchResults() {
             search_term: searchTerm,
             filter_type: filterType,
             page: currentPage,
-            seen_ids: Array.from(loadedVideoIds) // send to backend
+            seen_ids: Array.from(loadedVideoIds)
         })
     })
     .then(res => res.json())
     .then(data => renderResults(data.results));
+}
+
+function playVideo(url) {
+    const player = document.getElementById('player');
+    const frame = document.getElementById('playerFrame');
+
+    // Convert to embed URL
+    const embedUrl = url.replace('/view_video.php?viewkey=', '/embed/');
+
+    frame.src = embedUrl;
+    player.style.display = 'block';
+
+    // scroll to player
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function renderResults(videos) {
@@ -128,8 +147,6 @@ function renderResults(videos) {
     }
 
     videos.forEach(v => {
-
-        // extra safety: avoid duplicates on frontend
         if (loadedVideoIds.has(v.video_id)) return;
 
         loadedVideoIds.add(v.video_id);
@@ -137,10 +154,7 @@ function renderResults(videos) {
         const div = document.createElement('div');
         div.className = 'video-card';
 
-        // CLICK → OPEN VIDEO
-        div.onclick = () => {
-            window.open(v.video_url, '_blank');
-        };
+        div.onclick = () => playVideo(v.video_url);
 
         div.innerHTML = `
             <img src="${v.thumbnail}">
