@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 import re
 import json
 import urllib.parse
+import os 
 
 app = Flask(__name__)
 
@@ -181,5 +182,7 @@ def fetch_video_source(video_url):
         print(f"Error in fetch_video_source: {str(e)}")
     return None
 
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
