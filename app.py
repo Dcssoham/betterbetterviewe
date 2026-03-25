@@ -29,14 +29,17 @@ def load_more():
     filter_type = data.get('filter_type', 'relevance')
     page = int(data.get('page', 1))
 
+    # NEW: already loaded IDs from frontend
+    seen_ids = set(data.get('seen_ids', []))
+
     if not search_term:
         return jsonify({'results': []})
 
-    results = fetch_videos(search_term, filter_type, page)
+    results = fetch_videos(search_term, filter_type, page, seen_ids)
     return jsonify({'results': results})
 
 
-def fetch_videos(search_term, filter_type, page):
+def fetch_videos(search_term, filter_type, page, seen_ids):
     search_term = search_term.replace(' ', '+')
 
     base_url = "https://www.pornhub.com/video/search?search="
@@ -61,19 +64,19 @@ def fetch_videos(search_term, filter_type, page):
         if r.status_code != 200:
             return []
 
-        return parse_videos(r.text)[:VIDEOS_PER_PAGE]
+        return parse_videos(r.text, seen_ids)[:VIDEOS_PER_PAGE]
 
     except Exception as e:
         logging.error(f"Fetch error: {e}")
         return []
 
 
-def parse_videos(html):
+def parse_videos(html, seen_ids):
     soup = BeautifulSoup(html, 'html.parser')
     boxes = soup.select('.videoBox')
 
     results = []
-    seen = set()
+    local_seen = set()
 
     for box in boxes:
         try:
@@ -88,9 +91,12 @@ def parse_videos(html):
                 continue
 
             video_id = match.group(1)
-            if video_id in seen:
+
+            # Skip duplicates (frontend + current batch)
+            if video_id in seen_ids or video_id in local_seen:
                 continue
-            seen.add(video_id)
+
+            local_seen.add(video_id)
 
             results.append({
                 'video_id': video_id,
