@@ -45,6 +45,11 @@ button:hover {
 .video-card {
     background: #1f1f1f;
     cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.video-card:hover {
+    transform: scale(1.03);
 }
 
 .video-card img {
@@ -80,10 +85,17 @@ let searchTerm = '';
 let filterType = 'relevance';
 let currentPage = 1;
 
+// NEW: track all loaded video IDs
+let loadedVideoIds = new Set();
+
 function startSearch() {
     searchTerm = document.getElementById('searchInput').value;
     currentPage = 1;
+
+    // reset
+    loadedVideoIds.clear();
     document.getElementById('results').innerHTML = '';
+
     fetchResults();
 }
 
@@ -99,7 +111,8 @@ function fetchResults() {
         body: JSON.stringify({
             search_term: searchTerm,
             filter_type: filterType,
-            page: currentPage
+            page: currentPage,
+            seen_ids: Array.from(loadedVideoIds) // send to backend
         })
     })
     .then(res => res.json())
@@ -115,8 +128,20 @@ function renderResults(videos) {
     }
 
     videos.forEach(v => {
+
+        // extra safety: avoid duplicates on frontend
+        if (loadedVideoIds.has(v.video_id)) return;
+
+        loadedVideoIds.add(v.video_id);
+
         const div = document.createElement('div');
         div.className = 'video-card';
+
+        // CLICK → OPEN VIDEO
+        div.onclick = () => {
+            window.open(v.video_url, '_blank');
+        };
+
         div.innerHTML = `
             <img src="${v.thumbnail}">
             <div class="video-info">
@@ -124,6 +149,7 @@ function renderResults(videos) {
                 <div>${v.duration} | ${v.views}</div>
             </div>
         `;
+
         container.appendChild(div);
     });
 
